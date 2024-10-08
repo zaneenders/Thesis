@@ -112,9 +112,9 @@ enum New {
                 let split_index = result_prev_idxs[i]
                 next = split_index + 1
                 if split_indexs.isEmpty {
-                    split_indexs.append(SI(alt_idx, number_of_points))
+                    split_indexs.append(SI(cidx: alt_idx, pidx: number_of_points))
                 } else {
-                    split_indexs.insert(SI(alt_idx, i + 1), at: 0)
+                    split_indexs.insert(SI(cidx: alt_idx, pidx: i + 1), at: 0)
                 }
             }
         }

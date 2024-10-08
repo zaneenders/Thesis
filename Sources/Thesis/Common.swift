@@ -44,10 +44,5 @@ struct SplitIndex {
     let cidx: Int  // candidate index
     let pidx: Int  // point index
 }
-extension SplitIndex {
-    init(_ cidx: Int, _ pidx: Int) {
-        self.cidx = cidx
-        self.pidx = pidx
-    }
-}
+
 extension SplitIndex: Equatable {}

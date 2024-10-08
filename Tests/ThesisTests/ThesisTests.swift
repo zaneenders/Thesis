@@ -133,7 +133,7 @@ final class ThesisTests: XCTestCase {
                 let matches = data.matches(of: split_idx_regex)
                 for match in matches {
                     let (_, cidx, pidx) = match.output
-                    split_indexs.append(SI(Int(cidx)!, Int(pidx)!))
+                    split_indexs.append(SI(cidx: Int(cidx)!, pidx: Int(pidx)!))
                 }
             }
         }
@@ -152,7 +152,7 @@ final class ThesisTests: XCTestCase {
         //     */
         new = New.regimes(err_list: alts, can_split)
         // }
-        // XCTAssertEqual(original, split_indexs)
+        XCTAssertEqual(original, split_indexs)
         XCTAssertEqual(new, split_indexs)
     }
     /*
@@ -190,12 +190,12 @@ final class ThesisTests: XCTestCase {
 
     func testOriginalRegimesBigger() {
         let split_points = Original.regimes(err_list: Bigger.candidates, Bigger.can_split)
-        let expected = [SI(6, 3), SI(9, 4)]
+        let expected = [SI(cidx: 6, pidx: 3), SI(cidx: 9, pidx: 4)]
         XCTAssertEqual(split_points, expected)
     }
     func testNewRegimesBigger() {
         let split_points = New.regimes(err_list: Bigger.candidates, Bigger.can_split)
-        let expected = [SI(6, 3), SI(9, 4)]
+        let expected = [SI(cidx: 6, pidx: 3), SI(cidx: 9, pidx: 4)]
         XCTAssertEqual(split_points, expected)
     }
 
@@ -210,13 +210,13 @@ final class ThesisTests: XCTestCase {
     }
     func testOriginalRegimesBasic() {
         let split_points = Original.regimes(err_list: Basic.candidates, Basic.can_split)
-        let expected = [SI(1, 1), SI(2, 2), SI(0, 4)]
+        let expected = [SI(cidx: 1, pidx: 1), SI(cidx: 2, pidx: 2), SI(cidx: 0, pidx: 4)]
         XCTAssertEqual(split_points, expected)
     }
 
     func testNewRegimesBasic() {
         let split_points = New.regimes(err_list: Basic.candidates, Basic.can_split)
-        let expected = [SI(1, 1), SI(2, 2), SI(0, 4)]
+        let expected = [SI(cidx: 1, pidx: 1), SI(cidx: 2, pidx: 2), SI(cidx: 0, pidx: 4)]
         XCTAssertEqual(split_points, expected)
     }
 
@@ -242,10 +242,10 @@ final class ThesisTests: XCTestCase {
         #(struct:cse 196 (#s(si 0 4))))
         */
         let expected = [
-            CSE(0, [SI(1, 1)]),
-            CSE(33, [SI(2, 2)]),
-            CSE(80, [SI(2, 3)]),
-            CSE(196, [SI(0, 4)]),
+            CSE(0, [SI(cidx: 1, pidx: 1)]),
+            CSE(33, [SI(cidx: 2, pidx: 2)]),
+            CSE(80, [SI(cidx: 2, pidx: 3)]),
+            CSE(196, [SI(cidx: 0, pidx: 4)]),
         ]
         XCTAssertEqual(out, expected)
     }
@@ -262,10 +262,10 @@ final class ThesisTests: XCTestCase {
     */
     func testAddSplitPoint() {
         let initial = [
-            CSE(0, [SI(1, 1)]),
-            CSE(33, [SI(2, 2)]),
-            CSE(80, [SI(2, 3)]),
-            CSE(196, [SI(0, 4)]),
+            CSE(0, [SI(cidx: 1, pidx: 1)]),
+            CSE(33, [SI(cidx: 2, pidx: 2)]),
+            CSE(80, [SI(cidx: 2, pidx: 3)]),
+            CSE(196, [SI(cidx: 0, pidx: 4)]),
         ]
         let psums = partial_sums(Basic.candidates)
         let num_points = Basic.candidates.first!.count
@@ -278,10 +278,10 @@ final class ThesisTests: XCTestCase {
         #(struct:cse 146 (#s(si 0 4) #s(si 2 2))))
         */
         let iteration_one = [
-            CSE(0, [SI(1, 1)]),
-            CSE(18, [SI(2, 2), SI(1, 1)]),
-            CSE(65, [SI(2, 3), SI(1, 1)]),
-            CSE(146, [SI(0, 4), SI(2, 2)]),
+            CSE(0, [SI(cidx: 1, pidx: 1)]),
+            CSE(18, [SI(cidx: 2, pidx: 2), SI(cidx: 1, pidx: 1)]),
+            CSE(65, [SI(cidx: 2, pidx: 3), SI(cidx: 1, pidx: 1)]),
+            CSE(146, [SI(cidx: 0, pidx: 4), SI(cidx: 2, pidx: 2)]),
         ]
         XCTAssertEqual(out1, iteration_one)
         /*
@@ -293,10 +293,10 @@ final class ThesisTests: XCTestCase {
         */
         let out2 = Original.addSplitPoint(num_points, iteration_one, Double(num_points), psums, Basic.can_split)
         let interation_two = [
-            CSE(0, [SI(1, 1)]),
-            CSE(18, [SI(2, 2), SI(1, 1)]),
-            CSE(65, [SI(2, 3), SI(1, 1)]),
-            CSE(131, [SI(0, 4), SI(2, 2), SI(1, 1)]),
+            CSE(0, [SI(cidx: 1, pidx: 1)]),
+            CSE(18, [SI(cidx: 2, pidx: 2), SI(cidx: 1, pidx: 1)]),
+            CSE(65, [SI(cidx: 2, pidx: 3), SI(cidx: 1, pidx: 1)]),
+            CSE(131, [SI(cidx: 0, pidx: 4), SI(cidx: 2, pidx: 2), SI(cidx: 1, pidx: 1)]),
         ]
         XCTAssertEqual(out2, interation_two)
         /*

@@ -10,9 +10,25 @@
   (define split-indices (err-lsts->split-indices candidates can-split?))
   (eprintf "can-split: ~a\n" split-indices))
 ```
-output
+initial data
 ```
-can-split: (#s(si 1 1) #s(si 2 2) #s(si 0 4))
+row: #(struct:cse 40 (#s(si 0 1)))
+row: #(struct:cse 0 (#s(si 1 1)))
+row: #(struct:cse 15 (#s(si 2 1)))
+
+row: #(struct:cse 83 (#s(si 0 2)))
+row: #(struct:cse 46 (#s(si 1 2)))
+row: #(struct:cse 33 (#s(si 2 2)))
+
+row: #(struct:cse 127 (#s(si 0 3)))
+row: #(struct:cse 466 (#s(si 1 3)))
+row: #(struct:cse 80 (#s(si 2 3)))
+
+row: #(struct:cse 196 (#s(si 0 4)))
+row: #(struct:cse 1156 (#s(si 1 4)))
+row: #(struct:cse 280 (#s(si 2 4)))
+
+inital: #(#(struct:cse 0 (#s(si 1 1))) #(struct:cse 33 (#s(si 2 2))) #(struct:cse 80 (#s(si 2 3))) #(struct:cse 196 (#s(si 0 4))))
 ```
 
 ## [Swift](../../Projects/Thesis)
@@ -39,3 +55,28 @@ racket -y src/main.rkt report --threads 1 --seed 0 zane/regimes.fpcore zane/thes
 candidates: ((51.73568596790282 49.822030173660636 51.31420959276469 51.96847903282816) (41.318643601299854 49.822030173660636 51.31420959276469 51.99892682317375) (42.3256126189509 46.70539859821504 56.62134690410728 51.96847903282816))
 can-split-lst: (#f #t #t #t)
 ```
+
+## Matching on Doubles
+https://godbolt.org/z/G1soPnvPM
+func idk(_ d: Double) {
+    switch d {
+        case -1...1: // use ucomisd
+        fast(d)
+        case -2..<1:
+        fast(d)
+        default:
+        slow(d)
+    }
+}
+
+@inline(__always)
+func fast(_ d: Double) {
+    let x = d + 1
+    print(x)
+}
+
+@inline(__always)
+func slow(_ d: Double) {
+    let x = d / 100000
+    print(x)
+}
