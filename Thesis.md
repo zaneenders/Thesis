@@ -2,11 +2,11 @@
 
 ```racket
 (module+ test
-  (define candidates (list 
-  (list 40 43 44 69)
-  (list 0 46 420 690)
-  (list 15 18 47 200)))
-  (define can-split? (list #f #t #t #t))
+  (define candidates
+    (list (list 40 43 44 69 420)    ; index 0
+          (list 0 46 420 690 999)   ; index 1
+          (list 15 18 47 200 469))) ; index 2
+  (define can-split? (list #f #t #t #t #t))
   (define split-indices (err-lsts->split-indices candidates can-split?))
   (eprintf "can-split: ~a\n" split-indices))
 ```
@@ -31,8 +31,47 @@ row: #(struct:cse 280 (#s(si 2 4)))
 inital: #(#(struct:cse 0 (#s(si 1 1))) #(struct:cse 33 (#s(si 2 2))) #(struct:cse 80 (#s(si 2 3))) #(struct:cse 196 (#s(si 0 4))))
 ```
 
-## [Swift](../../Projects/Thesis)
-Swift code to assist in presenting thesis work.
+Add split point input and output data
+```
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 33 (#s(si 2 2)))
+    #(struct:cse 80 (#s(si 2 3)))
+    #(struct:cse 196 (#s(si 0 4)))
+    #(struct:cse 616 (#s(si 0 5))))
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 18 (#s(si 2 2) #s(si 1 1)))
+    #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
+    #(struct:cse 146 (#s(si 0 4) #s(si 2 2)))
+    #(struct:cse 566 (#s(si 0 5) #s(si 2 2))))
+
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 18 (#s(si 2 2) #s(si 1 1)))
+    #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
+    #(struct:cse 146 (#s(si 0 4) #s(si 2 2)))
+    #(struct:cse 566 (#s(si 0 5) #s(si 2 2))))
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 18 (#s(si 2 2) #s(si 1 1)))
+    #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
+    #(struct:cse 131 (#s(si 0 4) #s(si 2 2) #s(si 1 1)))
+    #(struct:cse 551 (#s(si 0 5) #s(si 2 2) #s(si 1 1))))
+
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 18 (#s(si 2 2) #s(si 1 1)))
+    #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
+    #(struct:cse 131 (#s(si 0 4) #s(si 2 2) #s(si 1 1)))
+    #(struct:cse 551 (#s(si 0 5) #s(si 2 2) #s(si 1 1))))
+#(
+    #(struct:cse 0 (#s(si 1 1)))
+    #(struct:cse 18 (#s(si 2 2) #s(si 1 1)))
+    #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
+    #(struct:cse 131 (#s(si 0 4) #s(si 2 2) #s(si 1 1)))
+    #(struct:cse 551 (#s(si 0 5) #s(si 2 2) #s(si 1 1))))
+```
 
 ```sh
 racket -y src/main.rkt report --threads 1 --seed 0 zane/regimes.fpcore zane/thesis
