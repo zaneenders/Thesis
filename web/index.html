@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zane was here</title>
+  <script src="./html2pdf/html2pdf.bundle.min.js">
+  </script>
+  <script>
+     var worker = html2pdf()
+     console.log("load")
+  </script>
+</head>
+<body>
+  <h1>Zane was here</h1>
+  <button onclick="console.log(document.getElementsByTagName('BODY')[0]);
+  worker.from(document.getElementsByTagName('BODY')[0]).save();">Download</button>
+</body>
+</html>
