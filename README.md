@@ -10,11 +10,14 @@ git clone git@github.com:zaneenders/herbie.git
 
 run nightlies, make install because of merging with commit issues.
 ```sh
-chmod +x infra/nightly.sh
+git reset --hard
 git checkout "old-algorithm"
+chmod +x infra/nightly.sh
 make install
 ./infra/nightly.sh old-nightly 
+git reset --hard
 git checkout "new-algorithm"
+chmod +x infra/nightly.sh
 make install
 ./infra/nightly.sh new-nightly 
 ```
