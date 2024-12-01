@@ -3,9 +3,9 @@
 ```racket
 (module+ test
   (define candidates
-    (list (list 40 43 44 69 420)    ; index 0
-          (list 0 46 420 690 999)   ; index 1
-          (list 15 18 47 200 469))) ; index 2
+    (list (list 40.0 43.0 44.0 69.0 420.0) ; index 0
+          (list 15.0 18.0 47.0 200.0 469.0) ; index 1
+          (list 0.0 46.0 420.0 690.0 999.0))) ; index 2
   (define can-split? (list #f #t #t #t #t))
   (define split-indices (err-lsts->split-indices candidates can-split?))
   (eprintf "can-split: ~a\n" split-indices))

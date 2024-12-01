@@ -33,26 +33,22 @@
     ;; If there's not enough room to add another splitpoint, just pass the sp-prev along.
     (define out
       (for/vector #:length num-points ; P
-        ([point-idx (in-naturals)]
-         [point-entry (in-vector sp-prev)])
+        ([point-idx (in-naturals)] [candidate (in-vector sp-prev)])
         ;; We take the CSE corresponding to the best choice of previous split point.
         ;; The default, not making a new split-point, gets a bonus of min-weight
-        (let ([acost (- (cse-cost point-entry) min-weight)]
-              [aest point-entry])
+        (let ([acost (- (cse-cost candidate) min-weight)] [aest point-entry])
           (for ([prev-split-idx (in-range 0 point-idx)] ; P
-                [prev-entry (in-vector sp-prev)]
-                #:when (can-split? (si-pidx (car (cse-indices prev-entry)))))
+                [prev-candidate (in-vector sp-prev)]
+                #:when (can-split? (si-pidx (car (cse-indices prev-candidate)))))
             ;; For each previous split point, we need the best candidate to fill the new regime
-            (let ([best #f]
-                  [bcost #f])
-              (for ([cidx (in-naturals)] ; A
-                    [psum (in-list psums)])
+            (let ([best #f] [bcost #f])
+              (for ([cidx (in-naturals)] [psum (in-list psums)])
                 (let ([cost (- (vector-ref psum point-idx) (vector-ref psum prev-split-idx))])
                   (when (or (not best) (< cost bcost))
                     (set! bcost cost)
                     (set! best cidx))))
-              (when (and (< (+ (cse-cost prev-entry) bcost) acost))
-                (set! acost (+ (cse-cost prev-entry) bcost))
+              (when (and (< (+ (cse-cost prev-candidate) bcost) acost))
+                (set! acost (+ (cse-cost prev-candidate) bcost))
                 (set! aest (cse acost (cons (si best (+ point-idx 1)) (cse-indices prev-entry)))))))
           aest)))
     out)
