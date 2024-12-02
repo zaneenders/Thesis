@@ -9,7 +9,7 @@
   (define can-split? (list #f #t #t #t #t))
   (define split-indices (err-lsts->split-indices candidates can-split?))
   (eprintf "can-split: ~a\n" split-indices)
-  (check-equal? split-indices (list (si 1 1) (si 2 2) (si 0 5))))
+  (check-equal? split-indices (list (si 2 1) (si 1 2) (si 0 5))))
 ```
 initial data
 ```
