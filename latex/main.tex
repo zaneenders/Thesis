@@ -24,7 +24,7 @@
 
        \vspace*{1cm}
 
-        \textbf{\uppercase{Fitting Regimes into L1 cache}}
+        \textbf{\uppercase{Refactoring Regimes}}
 
        \vspace{0.5cm}
        
@@ -52,48 +52,53 @@
 \pagenumbering{arabic}
 
 \section{Abstract}
-% Sumerize the Study
-Herbie\cite{Herbie} is a compiler, developed at the University of Utah and the University of Washington,  leveraging rule-based AI techniques to improve Floating Point accuracy and execution speed for arbitrary math expressions. Floating Point arithmetic is used widely across the industry in fields like numerics to popular large language models. Floating Point covers most of the surface area on hardware. We targeted a bottleneck in the Herbie pipeline in a phase called regimes and reduced its runtime by 3x and its memory usage by 7x.
+Herbie \cite{Herbie} is a compiler developed in collaboration between the University of Utah and the University of Washington that uses a rule-based AI technique to improve floating-point accuracy and execution speed for arbitrary mathematical expressions. Floating-point arithmetic is used widely across the industry in fields from numerics to popular large language models. The majority of the CPU and GPU are devoted to floating-point computation. We targeted a bottleneck in the Herbie pipeline in a phase called “regimes” and reduced its runtime by 3.5x and its memory usage by 7x.
 
 \section{Introduction}
 % TODO Rework this and maybe the intro
-When computing the hypotenuse of a triangle using the equation $\sqrt{a^2 + b^2}$ from its Floating Point translation will introduce a surprising amount of error as you can see in Figure \ref{fig:hypot-error-graph}. Herbie aims to improve the Floating Point accuracy of arbitrary math expressions using rules-based machine learning techniques leveraging equivalence graphs (eGraphs). To introduce Floating Point error let's start with the hypotenuse of a triangle example. The squiggly line in the middle of Figure \ref{fig:hypot-error-graph}.  is the $\%accuracy$ of the expression using 8,000 points sampled by Herbie. As you can see the accuracy of you're result is rarely correct on average and as the inputs approach positive and negative infinity, the accuracy trends toward 0\%. Finding the hypotenuse of a triangle is common enough that it has more correct solutions available in math libraries such as the function $hypot(a,b)$ which implements a more complex but more accurate solution. Not every expression we encounter in this world is lucky or common enough to have a library solution like this example. This is where Herbie and Odyssey \cite{Odyssey} aims to improve, both are used in exploring alternative programs to a given specification like $\sqrt{a^2 + b^2}$. Most expressions are not common or lucky enough to have a library solution, which is why Herbie and Odyssey are such important tools. Not only are they able to provide more accurate solutions, but they can pinpoint where the error is coming from and explain why.
-% TODO site Bhargav's Error Explanations paper?
+This paper explores the optimization of the Regimes phase within Herbie, a compiler for improving the accuracy of floating-point programs by providing alternative options for a given math expression. Herbie takes in a mathematical expression in the form of a specification as input and translates that into a representation, such as floating-point, then applies several phases to generate alternative expressions that may minimize rounding errors.
+
+The Regimes phase plays a crucial role in Herbie's optimization process. It combines multiple alternative program representations generated from the original expression, aiming to create a more accurate final program. However, for some inputs, the original recursive Regimes algorithm wasn’t as performant as it could be and is relatively memory-intensive.
+
+This paper introduces a new, iterative approach to the Regimes phase, that significantly improves the performance and memory usage. This optimization translates to a faster overall runtime for Herbie's nightly benchmark suite.
+
+We will use the example $sqrt(x + 1) - sqrt(x)$, which is the default example in Herbie, pulled from Richards Hamming’s numerical textbook \cite{Hamming}. This example will show how Herbie improves the error in this expression. Visualized in Figure I (below) this example has high error for large positive inputs, which can be improved using Herbie.
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}{0.45\textwidth}
-  \includegraphics[width=\textwidth]{hypot-error-a.png}
+\begin{minipage}{0.6\textwidth}
+  \includegraphics[width=\textwidth]{accuracy-graph.png}
 \end{minipage}
-\hfill
-\begin{minipage}{0.45\textwidth}
-  \includegraphics[width=\textwidth]{hypot-error-b.png}
-\end{minipage}
-\caption{\%Accuracy graph of the output $\sqrt{a^2 + b^2}$ for inputs $a$ and $b$.}
+\caption{\%Accuracy graph of the output $sqrt(x + 1) - sqrt(x)$.}
 \label{fig:hypot-error-graph}
 \end{figure}
 
 \subsection{Herbie overview}
 
-% Clip figure 1 text from the pipeline image.
+Herbie takes in a specification defined using Math expressions in the Real domain and then compiles them to an output representation that computers can work with, most commonly floating-point. Herbie uses a rules-based AI method that allows for the automated generation of suggestions of alternative ways of representing the input program that may be more accurate than the original. When combined with frontends like Odyssey \cite{Odyssey}, additional information may be surfaced, such as where the error in a given expression may be. Herbie uses quite a few terms that have a precise meaning. To help with clarity we define the following terms.
 
-Herbie is a compiler from math expressed in the Reals domain as a specification compiling to an output representation that computers can work with like Floating Point. To start with an example of how Herbie works let's look at a math specification $\sqrt{x + 1} - \sqrt{x}$ . This is an example used in the Herbie paper pulled from Richard Hamming's \cite{Hamming}'s textbook as a specification for an output Floating Point program. This specification has seven sub-expressions, one for each Math operation. Treating variables $x$ and numeric literals $1$ in this specification as expressions. Numeric literals like $1/3$ have an inherent error in them because you can't fit an infinite repeating decimal in a finite amount of space like 64 bits. 
+\subsubsection{Specifications}
+A Specification allows for a source of truth to be defined for a given program. You can think of the source code passed to a compiler or interpreter as a specification of what the output program should produce. Defining this Specification allows Herbie to find different alternative ways of expressing the specification and measure how well this alternative is compared to the specification. Where a good solution to the Specification provides an accurate answer on all points.
 
-These sub-expressions are used to break down where the error in the specification is occurring. In this example, the error is located in the subtraction operation because of what is called catastrophic cancellation. This is when the left and right-hand sides of the operation are very close to each other, and the majority of the remaining value is lost in rounding error. 
+\subsubsection{Programs \& Alternatives}
+In Herbie programs are an instantiation of a specification with respect to a representation, like floating-point. The program instantiated from the original specification is used to get a metric of how accurate the program is compared to what's expected from its specification. This evaluation is done over the sampling and localization phases of Herbie (explained later). Different versions of the specification’s program are referred to as alternatives. These later materialize as Herbie’s output and can be converted to source code like what is shown in Figure \ref{fig:python}.
 
-To attempt to solve this problem Herbie first compiles the specification to a naive Floating Point representation which we will refer to in this paper as its program. Our example $\sqrt{x + 1} - \sqrt{x}$ also has seven nodes in the program, one for each expression. To get a baseline of this program's correctness in terms of accuracy, 8,256 uniformly distributed points are sampled between positive and negative infinity unless a sub-domain is provided by the user. 
+\subsubsection{Expressions}
+Herbie operates on Specifications and their associated Programs, which are composed of mathematical expressions. These expressions and inherent sub-expressions are simply the operations, variables like $x$, or literals like $1$, of which the Specification and Programs are composed of. The example \newline $sqrt(x + 1) - sqrt(x)$ has seven sub-expressions, one for each Math operation. Numeric literals like $1/3$ are expressed as expressions because they can have an inherent error in them.
 
-A subset of these sampled points is used in the first phase of Herbie's main loop, which is localize. The goal of the localize phase is to determine the error of an expression between the specification and its program. The specification is evaluated using an Interval Arithmetic library called Rival\cite{Rival}, which provides a correctly rounded answer. This is determined by evaluating the expression using as many bits as needed to get a correctly rounded answer in the specified output type. The default output type is a 64-bit Floating Point number also known as Double-precision. Other representations like Posits \cite{Posit} are supported. These sampled points give Herbie a measure of error between the specification and its program on which to improve. 
+\subsubsection{Representation}
+A representation is the numerical system that is being used by Herbie to represent the Real numbers. This is defined as a part of the specification. The most common representation used by Herbie is double-precision floating-point, and although there exist other representations, this is the representation that will be used throughout this paper.
 
-The second phase of Herbie is to generate alternative programs for the original program. An alternative is a different representation of the original program after rewriting a sub-expression of the original to a permutation of that expression using algebraic rewrite rules. One of these algebraic rules could be the distributive property $(a +b) * c \equiv (a * c) + ( a * b)$. This rewriting process is done by using an eGraph which takes in a starting state, a set of possible transitions, and produces a collection of possible ending states.
+\subsection{How Herbie Works}
+Herbie first compiles a Specification like $sqrt(x + 1) - sqrt(x)$ to a program using a defined representation like floating-point which is used to evaluate the accuracy of this naive translation compared to what the correct answer is. This is done by sampling various inputs and outputs in the specification along with its associated program.
 
-What's considered a good and bad rewrite depends on what metric Herbie is focused on. We will be focused on accuracy. However, you can imagine other metrics like the runtime speed of a program, where introducing branching or a large amount of operations could be a penalty. These alternatives are then ordered and ranked, pruning the worst alternative by whether there is a more accurate alternative for a given point or if its average error is the highest of the set.
+\subsubsection{Sampling}
 
-The third phase of the Herbie pipeline is to simplify the output expressions using a subset of the rewrite rules to remove unhelpful rewrites like repeatedly adding one to an expression when adding a different constant once is better.
+To get a measure of how accurate a given program is compared to its Specification and to provide a target for Herbie to aim for. Herbie samples 8,256 uniformly distributed points from the domain of the program. If no subdomain is provided, the representation’s domain is used; in the case of floating-point, positive to negative infinity is used.
 
-The last part of the main loop, visualized in Figure \ref{fig:herbie-pipeline} is the series phase. The series phase performs a Taylor series expansion on sub-expressions as their expansion could be more accurate than the original expression. This main loop is repeated multiple times (currently 4 iterations) attempting to find a helpful amount of possible alternatives. 
+The program is then run with these sampled points to obtain their output and then compared against the specification. The correct answer for a given point is computed using Rival \cite{Rival}, which uses interval arithmetic and the library MPRF \cite{MPFR} to determine the correctly rounded answer for a program. The delta between the output of the program and the output of the specification gives a measure of how accurate a program is on a given point and is averaged together to approximate how accurate a program is compared to its specification. 
 
-After the main loop is finished, Herbie produces a collection of potentially good alternatives to the original program derived from the specification. The best re-write of our example is the expression $\frac{1}{\sqrt{x} + \sqrt{1 + x}}$, which nearly doubles the original accuracy by removing the subtraction operation. These alternatives are passed into the regimes phase of the compiler, potentially producing new alternatives by branching other alternatives together based on their error at different regions of the input domain. From there the alternatives are passed to the finalize phase where the set of alternatives is cleaned and the result is provided to the consumer of Herbie. This completes a very high-level summary of Herbie and allows us to move into the core of the paper which is the speeding up of the section after the main loop completes which is the regimes section.
+Now that Herbie has a correct answer and the answer provided by the initial program, Herbie can locate where in the program the error is likely occurring and will attempt to generate an alternative program that will be more accurate. The program’s average error over the entire input range serves as an approximation for how accurate a given program will be in real-world scenarios. This moves us into Herbie’s Main loop, which is shown in Figure \ref{fig:herbie-pipeline}.
 
 \begin{figure}[htbp]
 \begin{center}
@@ -103,98 +108,144 @@ After the main loop is finished, Herbie produces a collection of potentially goo
 \end{center}
 \end{figure}
 
-\subsection{Regimes phase}
-The regimes phase comes after the main loop and is a search over the best alternatives gathered from the main loop visualized in Figure \ref{fig:herbie-pipeline}.  Each alternative to the input of regimes is considered to be the most accurate program on at least one of the 256 points pulled from the set of 8,256 original points. The Regimes phase of Herbie is called multiple times with a decreasing subset of the original collection of alternatives. This input of alternatives are each evaluated based on a summation of their error over 256 possible split points. This provides a cumulative distribution of the error for each alternative, which allows Herbie to use a least squares approach to minimize the error using a combination of these alternatives to produce an alternative that aims to be more accurate than the original program on average. 
+\subsection{Main Loop}
+Herbie’s main loop is run multiple times and is used to generate alternatives for the original program using the sampled points and other properties that can be defined in the specification but are left out of this paper as they aren’t relevant to the topic of this paper. The first phase of the main loop is the Localize phase.
 
-An example of the cumulative error points from seven alternatives evaluated over six possible split points is visualized in Figure \ref{fig:cumulative-error}. For each of the six possible split points, we want a line connecting the alternative with the lowest error on each point. When the points of this new line are summed together they aim to have the lowest cumulative errors for that set of alternatives.
+\subsubsection{Localize Phase}
 
-\begin{figure}[htbp]
-\begin{center}
-\includegraphics[width=0.95\textwidth]{cumulative-error-graph.png}
-\caption{Graph of the cumulative error pulled from Hamming's example with seven alternatives with 6 possible split points. Numbers displaying the two best alternatives. Zeros omitted.}
-\label{fig:cumulative-error} 
-\end{center}
-\end{figure}
-% TODO use a different graph that doesn't omit zeros
-The greedy algorithm for this is to use the lowest error alternative for each possible split point, but branching between different programs like this has a performance cost so we add a penalty to prevent this behavior. 
+The Localize phase is used to find which sub-expressions in the specification are likely to be responsible for the error. These expressions are where Herbie focuses on making improvements. In our \newline $sqrt(x + 1) - sqrt(x)$ example, the main cause of error is located in the subtraction operation because of what is called catastrophic cancellation. This is when the left and right-hand sides of the operation are very close to each other, and the majority of the remaining value is lost in rounding error. 
 
-This performance cost of branching between programs is due to the CPU changing out the instructions it executes based on the value of a conditional statement. To help with this modern, CPUs can perform what is called speculative execution by running both branches and throwing away the unneeded result, \textit{but this has caused other issues}. The program you are executing is likely to be called more than once so for best performance you want your next instructions to be as close to the CPU as possible, ideally already in the registers,  or at least in L1 cache.
+\subsubsection{Rewrite Phase}
 
-To give an example of how this can slow things down let's say you are running a function with 1,000,000 inputs and for simplicity's sake we have 250 programs that we are branching between for best accuracy. If these inputs are evenly distributed across the expressions, each expression will be run 4000 times. Depending on the ordering of these inputs they might get executed in batches, or you might be unlucky and have to go to L1 between inputs adding roughly 2-3 ns per operation making your computation roughly 2 to 3 times slower than if the inputs were grouped nicely. 
+The second phase of Herbie is to generate alternative programs for the original program. An “alternative program” is a possible variation of the original program that results from rewriting a sub-expression of the original program to a permutation of that expression using algebraic rewrite rules. This rewriting process is done using an eGraph\cite{eGraphs} which takes in as input a starting state and a set of possible transitions and produces a collection of possible ending states.
 
-You may not know the distribution of your inputs, but you may know an upper or lower bound on the input in, which case Herbie allows you to add pre-conditions to your specification, which informs Herbie and allows it to better tailor programs for that range. Below is an alternative program produced by regimes from the Hamming example outputted in Python by Herbie. 
+What’s considered a good and bad rewrite depends on what metric Herbie is focused on. For the purposes of this paper, Herbie is primarily focused on accuracy, however, other metrics could also be designed. These alternatives are then ordered and ranked. The worst alternatives are then pruned based on whether there is a more accurate alternative for a given point or if its average error is the highest of the set.
 
-\begin{center}
-\begin{lstlisting}
-if (math.sqrt((x + 1.0)) - math.sqrt(x)) <= 0.05:
-  return math.sqrt(math.pow(x, -1.0)) * 0.5
-else:
-  return math.fma(math.fma(-0.125, x, 0.5), x, (1.0 - math.sqrt(x)))
-\end{lstlisting}
-\end{center}
+\subsubsection{Simplify Phase}
+The third phase of the Herbie pipeline is to simplify the output expressions using a subset of the rewrite rules to remove unhelpful rewrites, such as repeatedly adding one to an expression when adding a different constant once would be better. This cleans up the output from the Rewrite phase.
 
-\subsection{Original Algorithm}
+\subsubsection{Series Phase}
+The last part of the main loop is the Series phase. The Series phase performs a Taylor series expansion on sub-expressions since that form of the expansion could be more accurate than the original expression. This helps explore options that can not be explored by rewriting but could provide a more accurate approximation of a given expression.
 
-The original regime algorithm can be broken into three sections: the initial setup, core loop, and extraction. We have two data types that we are working with, a candidate and split point shown in Figure \ref{fig:candidates}. 
+After the main loop completes its iterations over the previous four phases to generate possible good alternatives, the alternatives are passed along to the Regimes phase of the compiler.
+
+\subsection{Regimes Phase}
+
+The regimes phase uses a dynamic algorithm that takes in alternatives generated in the main loop and potentially joins multiple alternatives together to produce new alternatives. Two programs are joined together by branching between them when an input falls into a certain subdomain of the specification domain. Figure \ref{fig:python} shows a code example of two programs branched together by Regimes to form a new program. Alternatives are combined based on their error at different regions of the input domain. From there the alternatives are passed to the finalize phase.
 
 \begin{figure}[htbp]
 \begin{center}
-\includegraphics[width=0.95\textwidth]{candidates.png}
-\caption{Regimes data structures}
-\label{fig:candidates}
+\includegraphics[scale=0.60]{python-regime.png}
+\caption{A visualization of a split point.}
+\label{fig:python}
 \end{center}
 \end{figure}
 
-The initial setup starts with generating the cumulative error as a fixed-length vector for each alternative. This vector contains the total error of that alternative up to that point. The algorithm loops over each vector representing an alternative. Selecting the alternative out of the possible alternatives with the lowest cumulative error for that point. We construct what we call a candidate for each of these potential split points. A candidate contains its cumulative error up to that point and a list of split points made before that point to lower the total error. A split point contains the index of which alternative it is representing and the point that this alternative should be used until. After the initial setup is complete, a list of 256 candidates is generated each containing the cumulative error up to that point and one split point for the alternative that had the lowest cumulative error for that potential split point.
+\subsection{Finalize Phase}
+The Finalize phase of Herbie is where the generated set of alternatives is cleaned and the result is provided to the consumer of Herbie. The best re-write of our example is the expression $\frac{1}{\sqrt{x} + \sqrt{1 + x}}$, which nearly doubles the original accuracy by removing the subtraction operation.
 
-This initial list of candidates is passed to an $add-splitpoint$ function which loops over each of the the possible split points. We loop over the candidate for each point and save its error up to that point as the target to beat for that point. To discourage adding additional split points we subtract a bonus, which is the total number of possible split points from that candidate's cumulative error. We then loop over all the alternatives for that point and find the alternative with the lowest error for that point, then test if this potential best point beats the cumulative error of the target error to beat.
+This completes a very high-level summary of Herbie and allows us to move into the core of the paper which discusses speeding up the Regimes phase after the main loop.
 
-This inner loop is then repeated until no more changes are made when making successive calls to $add-splitpoint$ when compared to the previous round. This means that no more split points can be added to further decrease the error. The last candidate in the output list contains all of the split points of the alternatives needed to obtain the minimum error that it represents. We then return this list of split points to be refined in a binary search phase. This binary search phase refines where the actual split points are to be made. This new alternative is returned and added to the rest of the alternatives generated by this call to Herbie.
+\section{Methods}
+The Regimes algorithm evaluates alternatives from the main loop based on their cumulative error, sampled over 256 points from the original set of sampled points. This cumulative error gives a uniform approximation of how good an alternative is vs the input space. The goal of the Regimes phase is to minimize this curve by using alternatives to generate a more accurate program. This is done by joining multiple alternatives where one performs best in one section and where another alternative performs poorly.  A possible regime output program is shown in the Python code in Figure \ref{fig:python}. These alternatives are joined together using a list of split points.
 
-The right half of Figure \ref{fig:candidates} shows a final candidate for a reduced test case where 3 alternatives were compared over 5 points. The point indexes in this algorithm base 1 thus why the last point is labeled point 5 instead of 4. On the left of \ref{fig:candidates} are the list of candidates being repeatedly passed into the $add-splitpoint$ function. The resulting candidate with a cumulative error of 551 has its split points in reverse because each candidate starts with one split point representing the best alternative for that point. Split points are then appended to this list in subsequent calls to $add-splitpoint$  which is where the other split points are added. saying that up to point 1 we should use alternative 1, up to point 2 use alternative 2 and the remaining points use alternative 0.
-
-Source code in Appendix \ref{appendix:old-algorithm}.
-
-
-\subsection{Performance gains to be made}
-The primary goal of our research is to speed up the regimes section of Herbie. The slowest thing a computer can do in most cases is access information outside of the CPU or its caches. As we aren't doing any networking or disk access for this algorithm the last place to look for slowdowns is where we are allocating to the heap, which we are doing each time we append a new split point to a given candidate inside of three loops that are iterating over the data. 
-
-Allocations to the heap like this can be sped up by pre-allocating the memory before the work in loops is performed. These allocations are the performance bottleneck that we focused on improving when appending a new split point to a candidate's list of split points, this can add around 200-300 ns per split point.
-
-To figure out how much memory we would need to allocate ahead of time we can analyze the worst-case scenario of our memory needs. This algorithm works over the two data types, candidates and split points. A split point is two 64-bit integers. A candidate has N main split points and a 64-bit Floating Point value of the cumulative sum of the error for the region it represents. We are working with 256 possible split points so we need space for up to that many split points plus the cumulative error. This requires a total of $((256 * 2 *8) + 8) * 256 = 1,050,624$ bytes or 1 MB of memory not accounting for some small overhead for language-level booking for garbage collection. A possible final output of $add-splitpoint$ for a set of three alternatives (0-based index) over five points is visualized in Figure \ref{fig:candidate-list}.
+\subsubsection{Split Points}
 
 \begin{figure}[htbp]
 \begin{center}
-\includegraphics[width=0.8\textwidth]{candidate-list.png}
-\caption{State of the candidate list after the algorithm completes starting with 3 alternatives and 5 split points.}
-\label{fig:candidate-list} 
+\includegraphics[scale=0.60]{split-point.png}
+\caption{A visualization of a split point.}
+\label{fig:split-point}
 \end{center}
 \end{figure}
 
-As you can see this data representation contains a bunch of redundant information. For example, we have five occurrences of the split point for alternative one, up to point one. This means we can reduce the amount of memory we need and can potentially fit into the L1 cache, greatly reducing access times and increasing performance. A real output for 256 possible split points will have even more redundant information.
+Split points define where to use one alternative vs another. A split point encodes when to branch between two given alternative programs. A split point is composed of an index that references the alternative that is being used and a threshold that defines the point before which the current alternative is to be used. These split points are later evaluated to generate a program in an output representation by branching between different alternatives as we move from left to right across the input range from negative infinity to positive infinity.
 
-The fifth candidate labeled split point 4, covering all the possible split points would be the candidate used to generate a new alternative. Its list of split points says that we should use the alternative at index 1 up to point 1, then we should use alternative 2 up to point 2, and finally use alternative zero for the remaining point which is point 5 in this example. 
+Any program can be expressed as a list of split points. For example, let’s say the first alternative in our input is the most accurate on all points and cannot be improved on. This could be represented as one split point for alternative 0 and point 256 as shown in Figure \ref{fig:split-point}. This says to use the alternative at index 0 for all points up to 256 or, in other words, don’t branch at all and just use the alternative at index 0. A list of only one Split Point means using that alternative for all points before that point. Associated with the list of alternatives is a list of booleans for each point that represents whether or not we can split at that point. This is used to avoid introducing split points when the value between two adjacent points is the same.
 
-What information do we need out of Figure \ref{fig:candidate-list}, there are 3 categories of information that we are working with: the cumulative error, the candidate index, and the point index. If we flatten and re-organize this information by its intended meaning, we can store this in three vectors, which will have a fixed length of the possible number of split points and have one vector for each data type. Because these vectors are a fixed size we can allocate them at the beginning of a new algorithm avoiding run time allocations. This new vector-based layout retains the information we need to reconstruct the output list of split points needed for the next function in Herbie and greatly reduces the data needed to construct this output, not to mention much more efficient for the CPU to work with. Dropping from roughly 1 MB down to 768 bytes of information, and thus fitting into the L1 cache. 
-Unfortunately, we need a new algorithm to work with our new data layout.
+\subsubsection{Penalty value}
 
-\subsection{New Algorithm}
+To avoid overfitting and using too many Split Points between alternatives for a given run, Regimes uses a penalty value. This penalty value is applied to the cumulative error of an alternative to favor or discourage adding split points. The Regimes algorithm works to minimize the cumulative error, so expressing the penalty in this way allows the algorithm to treat Split Points as having a cost. This penalty value helps avoid overfitting and adding a split point at each possible split point. Currently, this value is set to the total number of possible split points that could be made (256).
 
-We improved the original algorithm with a new version to reduce memory usage and better align the data with what the CPU would like. This new Regimes algorithm doesn’t have the clear distinct phases as the original due to the removal of abstractions to fit into L1. Like the previous version, we still need to generate the cumulative error sum vectors for each alternative. As described before we allocate three vectors that initially contain: positive infinity for the cumulative error, zeros for the alternative to use at that point, and the number of possible points in the final vector. Positive infinity for the error at each point which is easy to improve on. Storing zero in the alternative index array as we are guaranteed at least one alternative to start, and we store the max number of points encoding that worst case we use that alternative all points. We then loop over our vectors representing cumulative error representing each possible alternative we could use. Updating our three vectors with an alternative representing the lowest error for each point, but still favoring the value that was already there by our penalty value. After this is completed we have a naive set of split points which we can improve.
+\subsection{Original Regimes Algorithm}
+The original Regimes algorithm starts by mapping over the alternatives and generating a cumulative sum for each alternative. Recording the current cumulative error at each of the 256 possible split points. This cumulative error view of the alternatives is then used to generate a Candidate for each of these points. The Candidate at the last point represents our final output and its list of split points will be used to generate a new alternative.
 
-For the core of the computation, we create two temporary vectors to keep track of the best alternative at a given point, this is used between the next two loops as we iterate over all the alternatives. We loop over the three vectors we just set up that are needed to construct our output split point. These two temporary vectors will be reset for each iteration of this loop. One is filled with positive infinity the other with the number of points we are working with (256). These vectors signify the best combination of split points we could find up to the current point of the outer loop. These two temporary vectors will contain the alt with the lowest increase in error and that delta of error for using it at that point. Not adjusted with the penalty yet.
+A Candidate encapsulates the list of split points (in reverse order) and the cumulative error of those split points. The cumulative error can be found by adding up the error of each alternative for the error of the points it is being used for. Saving this sum allows for a quick comparison to determine if one Candidate is more accurate on average than another for the given set of points they represent. 
 
-For each point in our output vectors, we loop over all possible alternatives only looking at the alternatives from the start index 0 up to the point index of the outer three vector loop. This defines a sub-range for which we are optimizing. For each point in this sub-range, we compute the delta error of the current alternative for the point we are working on, as the alternatives are represented as a vector of cumulative error. We focus on the delta between the previous point and our current point. Looping over all of the candidates we save the index and it's increase in error from the previous point. After completion of this inner loop, our temporary vectors contain the lowest delta error and the index of which alternative contains it.
+Below in Figure \ref{fig:candidate} is a candidate which represents the 5th candidate from Figure \ref{fig:candidate-list}.
 
-We iterate over the points in this sub-range again this time checking if using the current best alternative we found and the associated delta increase in error for each point, which we saved in our two temporary vectors. Calculating if using this new alternative lowers the cumulative error from what we already have, taking the penalty into account. Breaking potential ties using the previous alternative already selected by the algorithm. After we have iterated over all of the points, we are left with our three vectors which contain the cumulative error at each potential split point, the alternative for which that error is from, and which alternative we should use that point. We then loop back over these vectors and construct the split points that the original algorithm was storing explicitly and return that to the calling function. By changing the data layout and adjusting the algorithm accordingly we have successfully increased the performance and efficiency of this hot spot in regimes while not affecting other parts of Herbie.
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[scale=0.69]{candidate.png}
+\caption{A visualization of a Candidate.}
+\label{fig:candidate}
+\end{center}
+\end{figure}
 
-Source code at Appendix \ref{appendix:new-algorithm}.
+A Candidate is generated for each point by creating a split point for the alternative with the lowest cumulative error at that point and recording that error. This results in 256 Candidates all with one split point for the alternative that had the lowest cumulative error at that point. These Candidates are then optimized as sub-problems in the core loop of the algorithm
 
-\subsection{Conclusion}
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[scale=0.69]{list-of-candidates.png}
+\caption{A visualization of a list of Candidates.}
+\label{fig:list-of-candidates}
+\end{center}
+\end{figure}
 
-We flattened out a dynamic algorithm from using recursion to using iteration, reduced the redundant information used, and reduced the number of allocations needed to achieve the same output as the original algorithm. We also changed the data dependency within this triple-for-loop algorithm from looping over per possible number of split points, per number of points, and per number of alternatives. To per number of points, per number of alternatives, and per number of points. The end goal here was to push the alternatives loop all the way to the outermost loop to try to allow for more alternatives but this proved more difficult and we ran out of time. 
-Overall we ended up making a 3.5x improvement in speed and a 7x reduction in memory usage, leading to a roughly 28\% speed up to the nightly benchmark suite, a small step for Herbie and a big step for Regimes.
- 
+This list of 256 Candidates is passed to a function called “add split point” which optimizes each candidate as a sub-problem by using the Candidates that represent the points before it to construct a potential better Candidate for that point. This is done by looping over each of the previous Candidates and then looping over all alternatives and finding the alternative with the lowest cumulative error between the previous Candidate’s point and the point we are currently optimizing, a value that will be referred to as the “error delta.” This error delta is added to the error of the candidate that represents a potential new candidate for the point being optimized. We compare this potential candidate with the current candidate (possibly the initial candidate selected) and see if the new candidate has a lower error than the current candidate. We favor the current candidate by subtracting our penalty value from its cumulative error. If the new Candidate’s error is less than this favored value we replace the current Candidate with the new Candidate by taking the list of Candidates from a previous candidate and appending a split point for the point that the candidate represents and setting its alternative index to the alternative we used which had the lowest delta increase in error.
+
+The “add split point” function returns a new list of Candidates which is then compared to its input list of Candidates to determine if any changes occurred. If there were changes, we apply the algorithm again to the new list of Candidates. This is repeated until no changes occur between recursive calls, which indicates that no more split points can be added to reduce the cumulative error for any of the Candidates and their associated subproblems. A toy visualization of this ending list of Candidates is shown in Figure \ref{fig:candidate-list} which has 5 split points, as opposed to 256, and only 3 alternatives.
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[scale=0.5]{candidate-list.png}
+\caption{A visualization of the input to the "add split point" function.}
+\label{fig:candidate-list}
+\end{center}
+\end{figure}
+
+The last candidate in our list of candidates covers the entire range of 256 possible split points. The associated cumulative error has been minimized when no more changes can be made to any of the candidates. Because we repeatedly applied the “add split point” function until no more changes could be made, the algorithm has explored using all possible alternatives for all previous points and has converged on a decision of which split points were the best at each point. The last candidate’s list of split points leveraged all the knowledge explored by optimizing the candidates before it. Meaning we have found the optimal solution for the given set of alternatives. The list of possible split points associated with the final candidate is reversed and returned to the caller to generate a new alternative to be added to the set of possible alternatives of the original program.
+
+\subsection{Why change the current algorithm?}
+
+
+The regime phases of the compiler currently take up a sizable percentage of the Herbie nightly runs which are composed of 500+ benchmarks as seen in Figure \ref{fig:before-after}. This is used to get an aggregate of how Herbie is doing in its various phases and can be interpreted as how Herbie might perform for any arbitrary specification. With this insight, Herbie could spend a decent amount of time in the Regimes phase. Optimizing Regimes and improving the runtime has the benefit of lowering the potential time spent in the Regimes phase. Improving the runtime of the Regimes phase could surface other areas of Herbie that could benefit from performance optimizations.
+
+The original dynamic algorithm leverages sub-problems and uses a basic level of memoization by precomputing the cumulative error sum for each alternative and using a recursive method of solving subproblems repeatedly until no more improvements can be made. This is already shown to terminate and provide a solution that meets the contract of providing a list of split points, that can be converted to an alternative program that has equal or less cumulative error than the alternatives it is composed of.
+
+As discussed in section 6 of the “Algorithms Design” \cite{Algorithm} text cited in the Regimes sections of the Herbie paper, recursive solutions like this can often be reimplemented as iterative solutions over the subproblems. Moving to an approach like this has the potential to remove the recursive function calls and their associated cost while also reducing the amount of duplicate information being created and passed around between these function calls. 
+
+Figure \ref{fig:candidate-list} displays how this list of subproblems is represented and shows that the best set of split points for a given point is directly represented as a Candidate with a list of split points saved at that point. This means that split points are copied between Candidates if they are used as part of a solution at a later point. When adding a new split point at any point during the algorithm, an allocation is made for this new list of split points each time a split point is added. This means the same split point is added to the data structure multiple times and is one area that could be improved on.
+
+\subsection{The New Algorithm}
+
+To preserve the contract of the original function that we are optimizing we need to construct a similar list of split points to return. The original algorithm also leverages memoization by saving results of smaller subproblems and builds up to the best solution from those sub-problems. We built up this list of split points by minimizing the error for each of the sub-problems. If at any point we found a better combination of alternatives to use up to a given point we constructed a new list of split points which indicates which alternative to use at any given point. This process requires three points of information to keep track of the cumulative error at each point, which alternative to use at a given point, and which point we previously split on before that point.
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[scale=0.5]{vectors.png}
+\caption{A visualization of the main data layout in the new algorithm.}
+\label{fig:vectors}
+\end{center}
+\end{figure}
+
+Instead of recursively nesting this information in a list of split points we can flatten this out into three vectors and keep track of each data point separately, as is shown in Figure \ref{fig:vectors}. The cumulative errors entry will represent the error up to that point. The alternative index indicates which alternative was used at that point and which difference in error was combined with a previous split point, if any. The Previous Indexes Vector stores indexes that represent the location of each of the possible previous split points that could be made.
+
+These vectors are initially filled with infinity for the cumulative error, zero for the alternative index, and the Previous Indexes Vector is filled with the value of the total number of points. This previous index when not changed to another index in the vectors indicates not to use any additional split points.
+
+To solve for the best set of split points as we did in the original algorithm we start by laying out an initial proposed solution, then iterate over each point as a subproblem to find the best solution for that point and update the data at that point if it beats the initial solution. This leaves behind the information needed to construct a list of split points with a similar result to the original algorithm.
+
+We then generate an initial proposed solution by choosing the alternative with the lowest cumulative error at each point and save the cumulative error for that alternative at that point, along with which alternative it came from. This leaves the Previous Index Vector unmodified. We iterate over each possible split point (0 to 255) and solve for the best possible decision to make for that potential split point. When constructing the list of split points to return after finding the best decision for all possible split points, we loop over the points in reverse using the previous decisions of what split point is the best possible split point to be used at each point to generate a list of split points of which alternative should be used at which point and if additional split points are to be added. This approach explores all possible best-split points that could be made at each point but only uses the best solution found at the last point.
+
+To compute the best decisions at each point we explore all previous points up to the current point. Calculating the delta error of each alternative between the current point and the point we are optimizing. This results in two temporary vectors, one of which alternative has the lowest increase in error and one with that delta of error between that point and the point we are optimizing. These two vectors are then looped over and the increased delta error is added to the cumulative error saved in our cumulative error vector. This gives a total error for the current point we are working on if we used that alternative combined with adding a split point at the previous point. Each of these totals is compared to the current cumulative error value at the current point. The current value is favored by adding our penalty value to the proposed total. If this weighted total is less than the current cumulative error, we update the cumulative error, the index of the alternative being used at that point, and the index of the previous cumulative error used for our new total. 
+
+This process is repeated for all indexes 0 to 255 solving for the best possible decision that can be made at each point. When looping back over these arrays to construct our list of split points, if at any point we index into a point at which the Previous Index is still 256 we have found the last split point that can be created and can terminate and return our list of split points. This has allowed us to explore all possible points before the last point and make a decision on what the best set of splits is given the list of alternatives.
+
+\section{Results}
+
+This new approach has fewer runtime allocations since it is primarily computing the differences in error for each point and comparing combinations of alternatives at each point. This approach also slightly changes the order in which solutions are explored. Previously the order of exploration was the possible number of split points, per number of points, and per number of alternatives. In the new approach we explore over the number of points, the number of alternatives, and then the number of points. This is because there are big improvements to be made by pushing the alternatives to loop over all outermost loops. This new algorithm produces similar valid solutions but is about 3.5x faster and uses 7x less memory than the previous solution, as is shown in Figure \ref{fig:before-after}.
+
+
 \begin{figure}[htbp]
 \begin{center}
 \includegraphics[width=0.95\textwidth]{regimes-before.png}
@@ -209,12 +260,20 @@ Overall we ended up making a 3.5x improvement in speed and a 7x reduction in mem
 \end{center}
 \end{figure}
 
+As you can see this moved regimes from being a large percentage of Herbie’s runtime down to being a much smaller part of the runtime. 
+
+
 \subsection{Future Work}
+Future work for regimes could include pushing the alternatives loop to the outermost loop. As this algorithm isn’t called just once it is called with a decreasing amount of alternatives, pruning alternatives with a higher average error on each call to Regimes. So pushing out the alternatives loop and exploring which alternative to use at each point has the added benefit of possibly compressing these outer calls into the Regimes algorithm and exploring all alternatives at once then looping over the resulting data and possibly generating multiple split points while only processing the alternatives once, saving work between these calls and reducing computations.
 
-Future work for regimes could include finish pushing the alternatives loop out to the outermost loop, removing, removing the unnecessary vector of indices which alternative to use at a given point, and recomputing that at the end. Professor Panchekha made a later attempt at reusing work between calls to regimes that could greatly increase the performance of regimes even further. As this algorithm isn't called just once it is called with a decreasing amount of alternatives, pruning alternatives with a higher average error each call to regimes. So saving work between these calls could reduce computations.
+Another avenue of possible future improvements that could be made is tuning the penalty for when to add split points. A nice way of allowing for this would be surfacing this value as an input from a command line flag and later out to a more accessible front end like Odyssey. Allowing the client to experiment with different penalty values and see how that affects the number of branches added and the average error of an expression. Extending this idea allows for passing in a vector of weights for each possible split point representing a distribution of their inputs. For example, a program may have to accept inputs ranging from negative infinity to positive infinity, but maybe the program has heuristics that say 90\% of the inputs will be between -1 and 1. This distribution could be passed in as a vector of weights, and the cost of adding a given split point could vary based on this distribution. Having a higher penalty for a split inside the more concentrated area of inputs and a lower penalty for adding branches outside the first quantile. 
 
-Another avenue of possible future improvements that could be made is tuning the penalty for when to add split points. A nice way of allowing for this would be surfacing this value as an input from a command line flag and later all the way out to a more accessible front end like Odyssey. Allowing the client to experiment with different penalty values and see how that affects the number of branches added and the average error of an expression. Extending this idea; then allows for passing in a vector of weights for each possible split point representing a distribution of their inputs. For example, your program may have to accept inputs ranging from negative infinity to positive infinity but maybe your program has heuristics that say 90\% of the inputs will be between -1 and 1. This distribution could be passed in as a vector of weights, and the cost of adding a given split point could vary based on this distribution. Having a higher penalty for a split inside the more concentrated area of inputs and a lower penalty for adding branches outside the first quantile. Increasing the performance of regimes opens the door a bit more for other improvements to the Regimes section and Herbie as a whole.
 
+\section{Conclusion}
+
+We flattened out a dynamic algorithm from refactoring a recursive solution to its iterative form. This reduces the redundant creation of information during the exploration of possibilities and favors computing the best possible solution at each point while only saving that information. This reduced the number of allocations needed to achieve the same output as the original algorithm. Overall we ended up making a 3.5x improvement in speed and a 7x reduction in memory usage, leading to a roughly 28\% speed up to the nightly benchmark suite, a small step for Herbie and a big step for Regimes.
+
+\newpage
 \bibliographystyle{plain}
 \bibliography{citations}
 \newpage
@@ -297,7 +356,7 @@ Racket source code
         [alt-errors (in-vector flvec-psums)])
     (for ([point-idx (in-range number-of-points)]
           [err (in-flvector alt-errors)]
-          #:when (< (fl- err min-weight) (flvector-ref result-error-sums point-idx)))
+          #:when (< err (flvector-ref result-error-sums point-idx)))
       (flvector-set! result-error-sums point-idx err)
       (vector-set! result-alt-idxs point-idx alt-idx)))
 

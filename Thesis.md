@@ -8,7 +8,8 @@
           (list 0.0 46.0 420.0 690.0 999.0))) ; index 2
   (define can-split? (list #f #t #t #t #t))
   (define split-indices (err-lsts->split-indices candidates can-split?))
-  (eprintf "can-split: ~a\n" split-indices))
+  (eprintf "can-split: ~a\n" split-indices)
+  (check-equal? split-indices (list (si 1 1) (si 2 2) (si 0 5))))
 ```
 initial data
 ```
@@ -71,6 +72,34 @@ Add split point input and output data
     #(struct:cse 65 (#s(si 2 3) #s(si 1 1)))
     #(struct:cse 131 (#s(si 0 4) #s(si 2 2) #s(si 1 1)))
     #(struct:cse 551 (#s(si 0 5) #s(si 2 2) #s(si 1 1))))
+```
+```
+(eprintf "out: errors ~a\n" result-error-sums)
+(eprintf "out: alt ~a\n" result-alt-idxs)
+(eprintf "out: prev ~a\n" result-prev-idxs)
+```
+```
+out: errors #fl(0.0 23.0 70.0 141.0 561.0)
+out: alt #(1 2 2 0 0)
+out: prev #(5 0 0 1 1)
+```
+```
+; (is-better total-error current-cum-error (vector-ref result-alt-idxs point-idx)  (vector-ref result-alt-idxs prev-split-idx) (vector-ref result-prev-idxs point-idx) prev-split-idx)
+(define (is-better total-error current-cum-error alt prev-alt point prev-point)
+  (cond
+    [(fl< total-error current-cum-error) #t]
+    [(and (fl= total-error current-cum-error) (> alt prev-alt)) #t]
+    [(and (fl= total-error current-cum-error) (= alt prev-alt) (> point prev-point)) #t]
+    [else #f]))
+```
+current new-alogthim
+```
+(is-better alt-error-sum
+                       current-alt-error
+                       current-alt-idx
+                       best-alt-idx
+                       current-prev-idx
+                       prev-split-idx)
 ```
 
 ```sh
